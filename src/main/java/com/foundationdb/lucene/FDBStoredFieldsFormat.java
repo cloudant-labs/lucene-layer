@@ -23,8 +23,8 @@
 
 package com.foundationdb.lucene;
 
-import com.foundationdb.KeyValue;
-import com.foundationdb.tuple.Tuple;
+import com.apple.foundationdb.KeyValue;
+import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.codecs.StoredFieldsFormat;
 import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.StoredFieldsWriter;
@@ -239,7 +239,7 @@ public class FDBStoredFieldsFormat extends StoredFieldsFormat
             }
 
             byte[] typeKey = makeFieldTypeTuple(docTuple, info.number).pack();
-            byte[] typeValue = dir.txn.get(typeKey).get();
+            byte[] typeValue = Util.get(dir.txn.get(typeKey));
             long index = 0;
             if(typeValue != null) {
                 index = Tuple.fromBytes(typeValue).getLong(1);

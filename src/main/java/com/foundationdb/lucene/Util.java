@@ -23,22 +23,21 @@
 
 package com.foundationdb.lucene;
 
-import com.foundationdb.Cluster;
-import com.foundationdb.Database;
-import com.foundationdb.FDB;
-import com.foundationdb.Transaction;
-import com.foundationdb.async.Function;
-import com.foundationdb.tuple.ByteArrayUtil;
-import com.foundationdb.tuple.Tuple;
-import org.apache.lucene.index.FieldInfo.DocValuesType;
+import com.apple.foundationdb.Cluster;
+import com.apple.foundationdb.Database;
+import com.apple.foundationdb.FDB;
+import com.apple.foundationdb.Transaction;
+import com.apple.foundationdb.tuple.ByteArrayUtil;
+import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -51,6 +50,15 @@ public class Util
 
     public static final byte[] EMPTY_BYTES = new byte[0];
 
+    public static <T> T get(CompletableFuture<T> future) {
+        try {
+            return future.get();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     public static FDBDirectory unwrapDirectory(Directory dir) {
         if(dir instanceof FDBDirectory) {
@@ -240,7 +248,7 @@ public class Util
             // Explicit setup for passing executor
             test_FDB.startNetwork(executor);
             Cluster cluster = test_FDB.createCluster(null, executor);
-            test_DB = cluster.openDatabase("DB".getBytes(Charset.forName("UTF8")));
+            test_DB = cluster.openDatabase();
 
             test_DIR = new ThreadLocal<FDBTestDirectory>();
         }

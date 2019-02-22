@@ -23,11 +23,13 @@
 
 package com.foundationdb.lucene;
 
-import com.foundationdb.Database;
-import com.foundationdb.FDB;
-import com.foundationdb.Transaction;
-import com.foundationdb.async.Function;
-import com.foundationdb.tuple.Tuple;
+import com.apple.foundationdb.Database;
+import com.apple.foundationdb.FDB;
+import com.apple.foundationdb.Transaction;
+import com.apple.foundationdb.tuple.Tuple;
+
+import java.util.function.Function;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -73,13 +75,13 @@ public class TestBase
 
 
     static {
-        testBaseFDB = FDB.selectAPIVersion(100);
+        testBaseFDB = FDB.selectAPIVersion(600);
         testBaseDB = testBaseFDB.open();
     }
 
 
     @Before
-    public void clearRootPrefix() {
+    public void clearRootPrefix() throws Exception {
         testBaseDB.run(
                 new Function<Transaction, Void>()
                 {
@@ -94,9 +96,9 @@ public class TestBase
     }
 
     @After
-    public void clearTransaction() {
+    public void clearTransaction() throws Exception {
         if(testBaseTxn != null) {
-            testBaseTxn.reset();
+            testBaseTxn.close();
             testBaseTxn = null;
         }
     }

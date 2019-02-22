@@ -23,8 +23,8 @@
 
 package com.foundationdb.lucene;
 
-import com.foundationdb.Transaction;
-import com.foundationdb.tuple.Tuple;
+import com.apple.foundationdb.Transaction;
+import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;

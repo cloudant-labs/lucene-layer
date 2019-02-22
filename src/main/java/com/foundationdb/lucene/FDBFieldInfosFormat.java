@@ -23,8 +23,8 @@
 
 package com.foundationdb.lucene;
 
-import com.foundationdb.KeyValue;
-import com.foundationdb.tuple.Tuple;
+import com.apple.foundationdb.KeyValue;
+import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.codecs.FieldInfosFormat;
 import org.apache.lucene.codecs.FieldInfosReader;
 import org.apache.lucene.codecs.FieldInfosWriter;

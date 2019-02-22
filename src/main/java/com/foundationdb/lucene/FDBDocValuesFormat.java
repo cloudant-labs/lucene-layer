@@ -23,8 +23,8 @@
 
 package com.foundationdb.lucene;
 
-import com.foundationdb.KeyValue;
-import com.foundationdb.tuple.Tuple;
+import com.apple.foundationdb.KeyValue;
+import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.codecs.DocValuesConsumer;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.DocValuesProducer;
@@ -127,7 +127,7 @@ public class FDBDocValuesFormat extends DocValuesFormat
 
             @Override
             public long get(int docID) {
-                byte[] bytes = dir.txn.get(numericTuple.add(docID).pack()).get();
+                byte[] bytes = Util.get(dir.txn.get(numericTuple.add(docID).pack()));
                 assert bytes != null : "No numeric for docID: " + docID;
                 return Tuple.fromBytes(bytes).getLong(0);
             }
@@ -143,7 +143,7 @@ public class FDBDocValuesFormat extends DocValuesFormat
 
             @Override
             public void get(int docID, BytesRef result) {
-                byte[] bytes = dir.txn.get(binaryTuple.add(docID).pack()).get();
+                byte[] bytes = Util.get(dir.txn.get(binaryTuple.add(docID).pack()));
                 assert bytes != null : "No bytes for docID: " + docID;
                 result.bytes = Tuple.fromBytes(bytes).getBytes(0).clone();
                 result.offset = 0;
@@ -161,14 +161,14 @@ public class FDBDocValuesFormat extends DocValuesFormat
 
             @Override
             public int getOrd(int docID) {
-                byte[] bytes = dir.txn.get(sortedTuple.add(ORD).add(docID).pack()).get();
+                byte[] bytes = Util.get(dir.txn.get(sortedTuple.add(ORD).add(docID).pack()));
                 assert bytes != null : "No ord for docID: " + docID;
                 return (int)Tuple.fromBytes(bytes).getLong(0);
             }
 
             @Override
             public void lookupOrd(int ord, BytesRef result) {
-                byte[] bytes = dir.txn.get(sortedTuple.add(BYTES).add(ord).pack()).get();
+                byte[] bytes = Util.get(dir.txn.get(sortedTuple.add(BYTES).add(ord).pack()));
                 assert bytes != null : "No bytes for ord: " + ord;
                 result.bytes = Tuple.fromBytes(bytes).getBytes(0).clone();
                 result.offset = 0;
@@ -179,7 +179,7 @@ public class FDBDocValuesFormat extends DocValuesFormat
             public int getValueCount() {
                 int valueCount = 0;
                 Tuple bytesTuple = sortedTuple.add(BYTES);
-                List<KeyValue> lastValue = dir.txn.getRange(bytesTuple.range(), 1, true).asList().get();
+                List<KeyValue> lastValue = Util.get(dir.txn.getRange(bytesTuple.range(), 1, true).asList());
                 if(!lastValue.isEmpty()) {
                     if(!lastValue.isEmpty()) {
                         KeyValue kv = lastValue.get(0);
@@ -217,7 +217,7 @@ public class FDBDocValuesFormat extends DocValuesFormat
 
             @Override
             public void lookupOrd(long ord, BytesRef result) {
-                byte[] bytes = dir.txn.get(sortedSetTuple.add(BYTES).add(ord).pack()).get();
+                byte[] bytes = Util.get(dir.txn.get(sortedSetTuple.add(BYTES).add(ord).pack()));
                 assert bytes != null : "No bytes for ord: " + ord;
                 result.bytes = Tuple.fromBytes(bytes).getBytes(0).clone();
                 result.offset = 0;
@@ -227,7 +227,7 @@ public class FDBDocValuesFormat extends DocValuesFormat
             @Override
             public long getValueCount() {
                 Tuple bytesTuple = sortedSetTuple.add(BYTES);
-                List<KeyValue> lastValue = dir.txn.getRange(bytesTuple.range(), 1, true).asList().get();
+                List<KeyValue> lastValue = Util.get(dir.txn.getRange(bytesTuple.range(), 1, true).asList());
                 int valueCount = 0;
                 if(!lastValue.isEmpty()) {
                     KeyValue kv = lastValue.get(0);

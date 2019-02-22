@@ -23,8 +23,8 @@
 
 package com.foundationdb.lucene;
 
-import com.foundationdb.KeyValue;
-import com.foundationdb.tuple.Tuple;
+import com.apple.foundationdb.KeyValue;
+import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.codecs.LiveDocsFormat;
 import org.apache.lucene.index.SegmentInfoPerCommit;
 import org.apache.lucene.store.Directory;
@@ -63,7 +63,7 @@ public class FDBLiveDocsFormat extends LiveDocsFormat
         FDBDirectory dir = Util.unwrapDirectory(directory);
         Tuple livTuple = makeLivTuple(dir, info, info.getDelGen());
 
-        byte[] sizeBytes = dir.txn.get(livTuple.pack()).get();
+        byte[] sizeBytes = Util.get(dir.txn.get(livTuple.pack()));
         assert sizeBytes != null : "No such livTuple";
 
         int totalSize = (int)Tuple.fromBytes(sizeBytes).getLong(0);

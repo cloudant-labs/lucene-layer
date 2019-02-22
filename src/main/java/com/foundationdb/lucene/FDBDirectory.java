@@ -23,10 +23,10 @@
 
 package com.foundationdb.lucene;
 
-import com.foundationdb.KeyValue;
-import com.foundationdb.Transaction;
-import com.foundationdb.async.AsyncIterator;
-import com.foundationdb.tuple.Tuple;
+import com.apple.foundationdb.KeyValue;
+import com.apple.foundationdb.Transaction;
+import com.apple.foundationdb.async.AsyncIterator;
+import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
@@ -138,7 +138,7 @@ public class FDBDirectory extends Directory
     //
 
     private long getDataID(String name) {
-        byte[] value = txn.get(dirSubspace.add(name).pack()).get();
+        byte[] value = Util.get(txn.get(dirSubspace.add(name).pack()));
         if(value == null) {
             return -1;
         }

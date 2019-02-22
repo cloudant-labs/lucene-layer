@@ -23,9 +23,9 @@
 
 package com.foundationdb.lucene;
 
-import com.foundationdb.KeyValue;
-import com.foundationdb.MutationType;
-import com.foundationdb.tuple.Tuple;
+import com.apple.foundationdb.KeyValue;
+import com.apple.foundationdb.MutationType;
+import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.PostingsConsumer;
@@ -186,9 +186,8 @@ public final class FDBPostingsFormat extends PostingsFormat
 
             @Override
             public SeekStatus seekCeil(BytesRef text, boolean useCache) {
-                List<KeyValue> range = dir.txn.getRange(fieldTuple.add(Util.copyRange(text)).pack(), fieldTuple.range().end, 1)
-                                          .asList()
-                                          .get();
+                List<KeyValue> range = Util.get(dir.txn.getRange(fieldTuple.add(Util.copyRange(text)).pack(), fieldTuple.range().end, 1)
+                                          .asList());
                 if(range.isEmpty()) {
                     return SeekStatus.END;
                 }
