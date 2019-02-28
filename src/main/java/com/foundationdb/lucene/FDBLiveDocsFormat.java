@@ -26,7 +26,7 @@ package com.foundationdb.lucene;
 import com.apple.foundationdb.KeyValue;
 import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.codecs.LiveDocsFormat;
-import org.apache.lucene.index.SegmentInfoPerCommit;
+import org.apache.lucene.index.SegmentCommitInfo;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.Bits;
@@ -57,7 +57,7 @@ public class FDBLiveDocsFormat extends LiveDocsFormat
     }
 
     @Override
-    public Bits readLiveDocs(Directory directory, SegmentInfoPerCommit info, IOContext context) {
+    public Bits readLiveDocs(Directory directory, SegmentCommitInfo info, IOContext context) {
         assert info.hasDeletions() : "No deletions: " + info.info.name;
 
         FDBDirectory dir = Util.unwrapDirectory(directory);
@@ -76,7 +76,7 @@ public class FDBLiveDocsFormat extends LiveDocsFormat
     }
 
     @Override
-    public void writeLiveDocs(MutableBits liveDocs, Directory directory, SegmentInfoPerCommit info, int newDelCount, IOContext context) {
+    public void writeLiveDocs(MutableBits liveDocs, Directory directory, SegmentCommitInfo info, int newDelCount, IOContext context) {
         FDBDirectory dir = Util.unwrapDirectory(directory);
         Tuple livTuple = makeLivTuple(dir, info, info.getNextDelGen());
 
@@ -89,7 +89,7 @@ public class FDBLiveDocsFormat extends LiveDocsFormat
     }
 
     @Override
-    public void files(SegmentInfoPerCommit info, Collection<String> files) throws IOException {
+    public void files(SegmentCommitInfo info, Collection<String> files) throws IOException {
         // TODO: Needed?
         //if(info.hasDeletions()) {
         //    files.add(IndexFileNames.fileNameFromGeneration(info.info.name, LIVE_DOCS_EXT, info.getDelGen()));
@@ -101,7 +101,7 @@ public class FDBLiveDocsFormat extends LiveDocsFormat
     // Helpers
     //
 
-    private static Tuple makeLivTuple(FDBDirectory dir, SegmentInfoPerCommit info, long gen) {
+    private static Tuple makeLivTuple(FDBDirectory dir, SegmentCommitInfo info, long gen) {
         return dir.subspace.add(info.info.name).add(LIVE_DOCS_EXT).add(gen);
     }
 

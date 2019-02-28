@@ -31,6 +31,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
+import org.apache.lucene.store.Lock;
 import org.apache.lucene.store.LockFactory;
 import org.apache.lucene.store.NoLockFactory;
 import org.apache.lucene.store.RAMFile;
@@ -54,6 +55,7 @@ public class FDBDirectory extends Directory
     public final Tuple subspace;
     private final Tuple dirSubspace;
     private final Tuple dataSubspace;
+    private LockFactory lockFactory;
 
 
     public FDBDirectory(String path, Transaction txn) {
@@ -222,4 +224,24 @@ public class FDBDirectory extends Directory
     public void close() {
         // None
     }
+
+	@Override
+	public Lock makeLock(String name) {
+		return lockFactory.makeLock(name);
+	}
+
+	@Override
+	public void clearLock(String name) throws IOException {
+		lockFactory.clearLock(name);
+	}
+
+	@Override
+	public void setLockFactory(LockFactory lockFactory) throws IOException {
+		this.lockFactory = lockFactory;
+	}
+
+	@Override
+	public LockFactory getLockFactory() {
+		return lockFactory;
+	}
 }

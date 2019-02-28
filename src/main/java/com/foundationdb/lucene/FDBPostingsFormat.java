@@ -165,6 +165,11 @@ public final class FDBPostingsFormat extends PostingsFormat
                 return -1;
                 //return fieldInfo.getIndexOptions() == IndexOptions.DOCS_ONLY ? -1 : sumTotalTermFreq;
             }
+
+			@Override
+			public boolean hasFreqs() {
+				return false;
+			}
         }
 
         private class FDBTermsEnum extends TermsEnum
@@ -180,12 +185,12 @@ public final class FDBPostingsFormat extends PostingsFormat
             }
 
             @Override
-            public boolean seekExact(BytesRef text, boolean useCache) {
-                return seekCeil(text, useCache) == SeekStatus.FOUND;
+            public boolean seekExact(BytesRef text) {
+                return seekCeil(text) == SeekStatus.FOUND;
             }
 
             @Override
-            public SeekStatus seekCeil(BytesRef text, boolean useCache) {
+            public SeekStatus seekCeil(BytesRef text) {
                 List<KeyValue> range = Util.get(dir.txn.getRange(fieldTuple.add(Util.copyRange(text)).pack(), fieldTuple.range().end, 1)
                                           .asList());
                 if(range.isEmpty()) {
@@ -213,7 +218,7 @@ public final class FDBPostingsFormat extends PostingsFormat
                 } else {
                     foundTerm.append(new BytesRef(new byte[]{ 0 }));
                 }
-                SeekStatus status = seekCeil(foundTerm, false);
+                SeekStatus status = seekCeil(foundTerm);
                 return (status == SeekStatus.END) ? null : term();
             }
 
@@ -386,6 +391,11 @@ public final class FDBPostingsFormat extends PostingsFormat
                 return docFreq;
             }
         }
+
+		@Override
+		public long ramBytesUsed() {
+			return 0;
+		}
     }
 
 

@@ -43,8 +43,8 @@ public class SimpleTest extends TestBase
 {
     @Test
     public void indexBasic() throws Exception {
-        StandardAnalyzer analyzer = new StandardAnalyzer(Version.LUCENE_44);
-        IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_44, analyzer);
+        StandardAnalyzer analyzer = new StandardAnalyzer(Version.LUCENE_46);
+        IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_46, analyzer);
         // recreate the index on each execution
         config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
         config.setCodec(new FDBCodec());

@@ -214,6 +214,11 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
             public TermsEnum iterator(TermsEnum reuse) throws IOException {
                 return new TVTermsEnum(field);
             }
+
+			@Override
+			public boolean hasFreqs() {
+				return false;
+			}
         }
 
         /** Iterate in terms order over all terms for a single field. * */
@@ -249,7 +254,7 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
             }
 
             @Override
-            public SeekStatus seekCeil(BytesRef text, boolean useCache) {
+            public SeekStatus seekCeil(BytesRef text) {
                 byte[] begin = termsTuple.add(Util.copyRange(text)).pack();
                 byte[] end = termsTuple.range().end;
                 it = dir.txn.getRange(begin, end).iterator();
@@ -314,6 +319,11 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
                 return BytesRef.getUTF8SortedAsUnicodeComparator();
             }
         }
+
+		@Override
+		public long ramBytesUsed() {
+			return 0; // TODO
+		}
     }
 
 

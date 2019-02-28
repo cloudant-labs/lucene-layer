@@ -83,7 +83,7 @@ public class FDBFieldInfosFormat extends FieldInfosFormat
     private static class Reader extends FieldInfosReader
     {
         @Override
-        public FieldInfos read(Directory dirIn, String segmentName, IOContext iocontext) {
+        public FieldInfos read(Directory dirIn, String segmentName, String segmentSuffix, IOContext iocontext) {
             final FDBDirectory dir = Util.unwrapDirectory(dirIn);
             final Tuple segmentTuple = dir.subspace.add(segmentName).add(FIELD_INFOS_EXT);
 
@@ -143,7 +143,7 @@ public class FDBFieldInfosFormat extends FieldInfosFormat
     private static class Writer extends FieldInfosWriter
     {
         @Override
-        public void write(Directory dirIn, String segmentName, FieldInfos infos, IOContext context) {
+        public void write(Directory dirIn, String segmentName, String segmentSuffix, FieldInfos infos, IOContext context) {
             final FDBDirectory dir = Util.unwrapDirectory(dirIn);
             final Tuple segmentTuple = dir.subspace.add(segmentName).add(FIELD_INFOS_EXT);
 

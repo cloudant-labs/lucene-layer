@@ -32,7 +32,7 @@ import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.SegmentInfoFormat;
 import org.apache.lucene.codecs.StoredFieldsFormat;
 import org.apache.lucene.codecs.TermVectorsFormat;
-import org.apache.lucene.codecs.lucene42.Lucene42Codec;
+import org.apache.lucene.codecs.lucene46.Lucene46Codec;
 
 import java.util.EnumSet;
 
@@ -63,7 +63,7 @@ public final class FDBCodec extends FilterCodec
     }
 
     public FDBCodec(EnumSet<FormatOpts> opts) {
-        super(FDBCodec.class.getSimpleName(), new Lucene42Codec());
+        super(FDBCodec.class.getSimpleName(), new Lucene46Codec());
         this.docValues = opts.contains(FormatOpts.DOC_VALUES) ? new FDBDocValuesFormat() : super.docValuesFormat();
         this.fieldInfos = opts.contains(FormatOpts.FIELD_INFOS) ? new FDBFieldInfosFormat() : super.fieldInfosFormat();
         this.liveDocs = opts.contains(FormatOpts.LIVE_DOCS) ? new FDBLiveDocsFormat() : super.liveDocsFormat();

@@ -36,6 +36,7 @@ import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
@@ -237,6 +238,16 @@ public class FDBDocValuesFormat extends DocValuesFormat
                 return valueCount;
             }
         }
+
+		@Override
+		public Bits getDocsWithField(FieldInfo field) throws IOException {
+			return null; // TODO
+		}
+
+		@Override
+		public long ramBytesUsed() {
+			return 0; // TODO
+		}
     }
 
 
