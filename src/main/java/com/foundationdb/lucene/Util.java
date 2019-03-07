@@ -44,7 +44,7 @@ import java.util.concurrent.ThreadFactory;
 
 public class Util
 {
-    public static final int DEFAULT_API_VERSION = 100;
+    public static final int DEFAULT_API_VERSION = 600;
     public static final String DEFAULT_ROOT_PREFIX = "lucene";
     public static final String DEFAULT_TEST_ROOT_PREFIX = "test_" + DEFAULT_ROOT_PREFIX;
 
