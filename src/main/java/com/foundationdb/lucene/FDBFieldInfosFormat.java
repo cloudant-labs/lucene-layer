@@ -88,48 +88,52 @@ public class FDBFieldInfosFormat extends FieldInfosFormat
             final Tuple segmentTuple = dir.subspace.add(segmentName).add(FIELD_INFOS_EXT);
 
             List<FieldInfo> fieldInfos = new ArrayList<FieldInfo>();
-            int lastFieldNum = -1;
-            InfoBuilder info = null;
-            for(KeyValue kv : dir.txn.getRange(segmentTuple.range())) {
-                Tuple fieldTuple = Tuple.fromBytes(kv.getKey());
-                int fieldNum = (int)fieldTuple.getLong(segmentTuple.size());
-                if(fieldNum != lastFieldNum) {
-                    if(info != null) {
-                        fieldInfos.add(info.build(lastFieldNum));
-                    }
-                    info = new InfoBuilder();
-                    lastFieldNum = fieldNum;
-                }
-                String key = fieldTuple.getString(segmentTuple.size() + 1);
-                Tuple value = Tuple.fromBytes(kv.getValue());
-                if(key.equals(NAME)) {
-                    info.name = value.getString(0);
-                } else if(key.equals(HAS_INDEX)) {
-                    info.isIndexed = getBool(value, 0);
-                } else if(key.equals(HAS_VECTORS)) {
-                    info.storeTermVector = getBool(value, 0);
-                } else if(key.equals(HAS_PAYLOADS)) {
-                    info.storePayloads = getBool(value, 0);
-                } else if(key.equals(HAS_NORMS)) {
-                    info.omitNorms = !getBool(value, 0);
-                } else if(key.equals(NORMS_TYPE)) {
-                    String normType = value.getString(0);
-                    info.normsType = stringToDocValuesType(normType);
-                } else if(key.equals(DOC_VALUES_TYPE)) {
-                    String docValueType = value.getString(0);
-                    info.docValuesType = stringToDocValuesType(docValueType);
-                } else if(key.equals(INDEX_OPTIONS)) {
-                    info.indexOptions = IndexOptions.valueOf(value.getString(0));
-                } else if(key.equals(ATTR)) {
-                    info.attrs.put(fieldTuple.getString(segmentTuple.size() + 2), value.getString(0));
-                } else {
-                    throw new IllegalStateException("Unknown key: " + key);
-                }
-            }
 
-            if(info != null) {
-                fieldInfos.add(info.build(lastFieldNum));
-            }
+            dir.run(txn -> {
+                int lastFieldNum = -1;
+                InfoBuilder info = null;
+                for(KeyValue kv : txn.getRange(segmentTuple.range())) {
+	                Tuple fieldTuple = Tuple.fromBytes(kv.getKey());
+	                int fieldNum = (int)fieldTuple.getLong(segmentTuple.size());
+	                if(fieldNum != lastFieldNum) {
+	                    if(info != null) {
+	                        fieldInfos.add(info.build(lastFieldNum));
+	                    }
+	                    info = new InfoBuilder();
+	                    lastFieldNum = fieldNum;
+	                }
+	                String key = fieldTuple.getString(segmentTuple.size() + 1);
+	                Tuple value = Tuple.fromBytes(kv.getValue());
+	                if(key.equals(NAME)) {
+	                    info.name = value.getString(0);
+	                } else if(key.equals(HAS_INDEX)) {
+	                    info.isIndexed = getBool(value, 0);
+	                } else if(key.equals(HAS_VECTORS)) {
+	                    info.storeTermVector = getBool(value, 0);
+	                } else if(key.equals(HAS_PAYLOADS)) {
+	                    info.storePayloads = getBool(value, 0);
+	                } else if(key.equals(HAS_NORMS)) {
+	                    info.omitNorms = !getBool(value, 0);
+	                } else if(key.equals(NORMS_TYPE)) {
+	                    String normType = value.getString(0);
+	                    info.normsType = stringToDocValuesType(normType);
+	                } else if(key.equals(DOC_VALUES_TYPE)) {
+	                    String docValueType = value.getString(0);
+	                    info.docValuesType = stringToDocValuesType(docValueType);
+	                } else if(key.equals(INDEX_OPTIONS)) {
+	                    info.indexOptions = IndexOptions.valueOf(value.getString(0));
+	                } else if(key.equals(ATTR)) {
+	                    info.attrs.put(fieldTuple.getString(segmentTuple.size() + 2), value.getString(0));
+	                } else {
+	                    throw new IllegalStateException("Unknown key: " + key);
+	                }
+	            }
+
+	            if(info != null) {
+	                fieldInfos.add(info.build(lastFieldNum));
+	            }
+	            return null;
+            });
 
             return new FieldInfos(fieldInfos.toArray(new FieldInfo[fieldInfos.size()]));
         }
@@ -147,30 +151,33 @@ public class FDBFieldInfosFormat extends FieldInfosFormat
             final FDBDirectory dir = Util.unwrapDirectory(dirIn);
             final Tuple segmentTuple = dir.subspace.add(segmentName).add(FIELD_INFOS_EXT);
 
-            for(FieldInfo fi : infos) {
-                final Tuple fieldTuple = segmentTuple.add(fi.number);
-                set(dir.txn, fieldTuple, NAME, fi.name);
-                set(dir.txn, fieldTuple, HAS_INDEX, fi.isIndexed());
-
-                if(fi.isIndexed()) {
-                    assert fi.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0 ||
-                           !fi.hasPayloads();
-                    set(dir.txn, fieldTuple, INDEX_OPTIONS, fi.getIndexOptions().toString());
-                }
-
-                set(dir.txn, fieldTuple, HAS_NORMS, !fi.omitsNorms());
-                set(dir.txn, fieldTuple, HAS_PAYLOADS, fi.hasPayloads());
-                set(dir.txn, fieldTuple, HAS_VECTORS, fi.hasVectors());
-                set(dir.txn, fieldTuple, DOC_VALUES_TYPE, docValuesTypeToString(fi.getDocValuesType()));
-                set(dir.txn, fieldTuple, NORMS_TYPE, docValuesTypeToString(fi.getNormType()));
-
-                if(fi.attributes() != null) {
-                    Tuple attrTuple = fieldTuple.add(ATTR);
-                    for(Map.Entry<String, String> entry : fi.attributes().entrySet()) {
-                        set(dir.txn, attrTuple, entry.getKey(), entry.getValue());
-                    }
-                }
-            }
+            dir.run(txn -> {
+	            for(FieldInfo fi : infos) {
+	                final Tuple fieldTuple = segmentTuple.add(fi.number);
+	                set(txn, fieldTuple, NAME, fi.name);
+	                set(txn, fieldTuple, HAS_INDEX, fi.isIndexed());
+	
+	                if(fi.isIndexed()) {
+	                    assert fi.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0 ||
+	                           !fi.hasPayloads();
+	                    set(txn, fieldTuple, INDEX_OPTIONS, fi.getIndexOptions().toString());
+	                }
+	
+	                set(txn, fieldTuple, HAS_NORMS, !fi.omitsNorms());
+	                set(txn, fieldTuple, HAS_PAYLOADS, fi.hasPayloads());
+	                set(txn, fieldTuple, HAS_VECTORS, fi.hasVectors());
+	                set(txn, fieldTuple, DOC_VALUES_TYPE, docValuesTypeToString(fi.getDocValuesType()));
+	                set(txn, fieldTuple, NORMS_TYPE, docValuesTypeToString(fi.getNormType()));
+	
+	                if(fi.attributes() != null) {
+	                    Tuple attrTuple = fieldTuple.add(ATTR);
+	                    for(Map.Entry<String, String> entry : fi.attributes().entrySet()) {
+	                        set(txn, attrTuple, entry.getKey(), entry.getValue());
+	                    }
+	                }
+	            }
+	            return null;
+            });
         }
     }
 

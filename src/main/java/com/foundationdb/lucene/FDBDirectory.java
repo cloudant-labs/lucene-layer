@@ -23,6 +23,7 @@
 
 package com.foundationdb.lucene;
 
+import com.apple.foundationdb.Database;
 import com.apple.foundationdb.KeyValue;
 import com.apple.foundationdb.Transaction;
 import com.apple.foundationdb.async.AsyncIterator;
@@ -45,32 +46,33 @@ import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Function;
 
 public class FDBDirectory extends Directory
 {
     /** See {@link RAMInputStream#BUFFER_SIZE} */
     private static final int BUFFER_SIZE = 1024;
 
-    public Transaction txn;
     public final Tuple subspace;
     private final Tuple dirSubspace;
     private final Tuple dataSubspace;
+    private Database db;
     private LockFactory lockFactory;
 
 
-    public FDBDirectory(String path, Transaction txn) {
-        this(Tuple.from(Util.DEFAULT_ROOT_PREFIX, path), txn);
+    public FDBDirectory(String path, Database db) {
+        this(Tuple.from(Util.DEFAULT_ROOT_PREFIX, path), db);
     }
 
-    public FDBDirectory(Tuple subspace, Transaction txn) {
-        this(subspace, txn, NoLockFactory.getNoLockFactory());
+    public FDBDirectory(Tuple subspace, Database db) {
+        this(subspace, db, NoLockFactory.getNoLockFactory());
     }
 
-    FDBDirectory(Tuple subspace, Transaction txn, LockFactory lockFactory) {
+    FDBDirectory(Tuple subspace, Database db, LockFactory lockFactory) {
         assert subspace != null;
-        assert txn != null;
+        assert db != null;
         assert lockFactory != null;
-        this.txn = txn;
+        this.db = db;
         this.subspace = subspace;
         this.dirSubspace = subspace.add(0);
         this.dataSubspace = subspace.add(1);
@@ -81,7 +83,7 @@ public class FDBDirectory extends Directory
         }
     }
 
-    private class Output extends RAMOutputStream
+	private class Output extends RAMOutputStream
     {
         private final String name;
         private final long dataID;
@@ -106,15 +108,19 @@ public class FDBDirectory extends Directory
         }
 
         private void flushInternal() {
-            try {
-                // Sets file length
-                super.flush();
-                byte[] outValue = new byte[(int)length()];
-                writeTo(outValue, 0);
-                Util.writeLargeValue(txn, dataSubspace.add(dataID), BUFFER_SIZE, outValue);
-            } catch(IOException e) {
-                throw new RuntimeException(e);
-            }
+        	try {
+				// Sets file length
+				super.flush();
+				byte[] outValue = new byte[(int)length()];        	
+				writeTo(outValue, 0);
+				
+				db.run(txn -> {
+					Util.writeLargeValue(txn, dataSubspace.add(dataID), BUFFER_SIZE, outValue);
+					return null;
+				});
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
         }
 
         @Override
@@ -140,32 +146,38 @@ public class FDBDirectory extends Directory
     //
 
     private long getDataID(String name) {
-        byte[] value = Util.get(txn.get(dirSubspace.add(name).pack()));
-        if(value == null) {
-            return -1;
-        }
-        return Tuple.fromBytes(value).getLong(0);
+    	return (long) db.run(txn -> {
+	        byte[] value = Util.get(txn.get(dirSubspace.add(name).pack()));
+	        if(value == null) {
+	            return -1L;
+	        }
+	        return Tuple.fromBytes(value).getLong(0);
+    	});
     }
 
     private long createDataID(String name) {
-        AsyncIterator<KeyValue> it = txn.getRange(dataSubspace.range(), 1, true).iterator();
-        long nextID = 0;
-        if(it.hasNext()) {
-            KeyValue kv = it.next();
-            nextID = Tuple.fromBytes(kv.getKey()).getLong(dataSubspace.size()) + 1;
-        }
-        txn.set(dirSubspace.add(name).pack(), Tuple.from(nextID).pack());
-        txn.set(dataSubspace.add(nextID).add(0).pack(), Util.EMPTY_BYTES);
-        return nextID;
+    	return (long) db.run(txn -> {
+	        AsyncIterator<KeyValue> it = txn.getRange(dataSubspace.range(), 1, true).iterator();
+	        long nextID = 0;
+	        if(it.hasNext()) {
+	            KeyValue kv = it.next();
+	            nextID = Tuple.fromBytes(kv.getKey()).getLong(dataSubspace.size()) + 1;
+	        }
+	        txn.set(dirSubspace.add(name).pack(), Tuple.from(nextID).pack());
+	        txn.set(dataSubspace.add(nextID).add(0).pack(), Util.EMPTY_BYTES);
+	        return nextID;
+    	});
     }
 
     @Override
     public String[] listAll() {
-        List<String> outList = new ArrayList<String>();
-        for(KeyValue kv : txn.getRange(dirSubspace.range())) {
-            outList.add(Tuple.fromBytes(kv.getKey()).getString(dirSubspace.size()));
-        }
-        return outList.toArray(new String[outList.size()]);
+    	return db.run(txn -> {
+    		List<String> outList = new ArrayList<String>();
+    		for(KeyValue kv : txn.getRange(dirSubspace.range())) {
+    			outList.add(Tuple.fromBytes(kv.getKey()).getString(dirSubspace.size()));
+    		}
+    		return outList.toArray(new String[outList.size()]);
+    	});
     }
 
     @Override
@@ -176,12 +188,18 @@ public class FDBDirectory extends Directory
 
     @Override
     public void deleteFile(String name) throws NoSuchFileException {
-        long dataID = getDataID(name);
-        if(dataID == -1) {
+    	long result = (long) db.run(txn -> {
+	        long dataID = getDataID(name);
+	        if(dataID == -1) {
+	            return -1L;
+	        }
+	        txn.clear(dirSubspace.add(name).pack());
+	        txn.clear(dataSubspace.add(dataID).range());
+	        return null;
+    	});
+        if(result == -1) {
             throw new NoSuchFileException(name);
         }
-        txn.clear(dirSubspace.add(name).pack());
-        txn.clear(dataSubspace.add(dataID).range());
     }
 
     @Override
@@ -208,16 +226,26 @@ public class FDBDirectory extends Directory
         if(dataID == -1) {
             throw new FileNotFoundException(name);
         }
-        InputFile file = new InputFile();
-        int totalLen = 0;
-        for(KeyValue kv : txn.getRange(dataSubspace.add(dataID).range())) {
-            byte[] value = kv.getValue();
-            byte[] ramValue = file.addBufferInternal(value.length);
-            totalLen += value.length;
-            System.arraycopy(value, 0, ramValue, 0, value.length);
+        IndexInput result = db.run(txn -> {
+            InputFile file = new InputFile();
+            int totalLen = 0;
+	        for(KeyValue kv : txn.getRange(dataSubspace.add(dataID).range())) {
+	            byte[] value = kv.getValue();
+	            byte[] ramValue = file.addBufferInternal(value.length);
+	            totalLen += value.length;
+	            System.arraycopy(value, 0, ramValue, 0, value.length);
+	        }
+	        file.setLengthInternal(totalLen);
+	        try {
+				return new RAMInputStream(name, file);
+			} catch (IOException e) {
+				return null;
+			}
+        });
+        if (result == null) {
+        	throw new IOException("new RAMInputStream threw I/O exception");
         }
-        file.setLengthInternal(totalLen);
-        return new RAMInputStream(name, file);
+        return result;
     }
 
     @Override
@@ -243,5 +271,14 @@ public class FDBDirectory extends Directory
 	@Override
 	public LockFactory getLockFactory() {
 		return lockFactory;
+	}	
+	
+	public <T> T run(Function<? super Transaction,T> retryable) {
+		return db.run(retryable);
 	}
+	
+	public Transaction createTransaction() {
+		return db.createTransaction();
+	}
+
 }

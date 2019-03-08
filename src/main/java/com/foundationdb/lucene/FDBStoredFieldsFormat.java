@@ -24,6 +24,7 @@
 package com.foundationdb.lucene;
 
 import com.apple.foundationdb.KeyValue;
+import com.apple.foundationdb.Transaction;
 import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.codecs.StoredFieldsFormat;
 import org.apache.lucene.codecs.StoredFieldsReader;
@@ -108,37 +109,43 @@ public class FDBStoredFieldsFormat extends StoredFieldsFormat
             final Tuple docTuple = segmentTuple.add(docID);
             final Tuple docTypesTuple = segmentTuple.add(docID).add(FIELD_TYPE_SUBSPACE);
 
-            for(KeyValue kv : dir.txn.getRange(docTypesTuple.range())) {
-                Tuple keyTuple = Tuple.fromBytes(kv.getKey());
-                Tuple valueTuple = Tuple.fromBytes(kv.getValue());
-
-                int fieldNumber = (int)keyTuple.getLong(docTypesTuple.size());
-                String type = valueTuple.getString(0);
-                long dataIndex = valueTuple.getLong(1);
-
-                FieldInfo fieldInfo = fieldInfos.fieldInfo(fieldNumber);
-                if(!KNOWN_TYPES.contains(type)) {
-                    throw new RuntimeException("unknown field type for field " + fieldInfo.name + ": " + type);
+            Transaction txn = dir.createTransaction();
+            try {
+                for(KeyValue kv : txn.getRange(docTypesTuple.range())) {
+                    Tuple keyTuple = Tuple.fromBytes(kv.getKey());
+                    Tuple valueTuple = Tuple.fromBytes(kv.getValue());
+    
+                    int fieldNumber = (int)keyTuple.getLong(docTypesTuple.size());
+                    String type = valueTuple.getString(0);
+                    long dataIndex = valueTuple.getLong(1);
+    
+                    FieldInfo fieldInfo = fieldInfos.fieldInfo(fieldNumber);
+                    if(!KNOWN_TYPES.contains(type)) {
+                        throw new RuntimeException("unknown field type for field " + fieldInfo.name + ": " + type);
+                    }
+    
+                    switch(visitor.needsField(fieldInfo)) {
+                        case YES:
+                            readField(txn, makeFieldDataTuple(docTuple, fieldNumber, dataIndex), type, fieldInfo, visitor);
+                            break;
+                        case NO:
+                            break;
+                        case STOP:
+                            return;
+                    }
                 }
-
-                switch(visitor.needsField(fieldInfo)) {
-                    case YES:
-                        readField(makeFieldDataTuple(docTuple, fieldNumber, dataIndex), type, fieldInfo, visitor);
-                        break;
-                    case NO:
-                        break;
-                    case STOP:
-                        return;
-                }
+            } finally {
+                txn.close();
             }
         }
 
-        private void readField(Tuple fieldTuple,
+        private void readField(Transaction txn,
+                               Tuple fieldTuple,
                                String type,
                                FieldInfo fieldInfo,
                                StoredFieldVisitor visitor) throws IOException {
             ByteArrayOutputStream os = new ByteArrayOutputStream();
-            for(KeyValue kv : dir.txn.getRange(fieldTuple.range())) {
+            for(KeyValue kv : txn.getRange(fieldTuple.range())) {
                 byte[] value = kv.getValue();
                 os.write(value);
             }
@@ -244,17 +251,20 @@ public class FDBStoredFieldsFormat extends StoredFieldsFormat
             }
 
             byte[] typeKey = makeFieldTypeTuple(docTuple, info.number).pack();
-            byte[] typeValue = Util.get(dir.txn.get(typeKey));
-            long index = 0;
-            if(typeValue != null) {
-                index = Tuple.fromBytes(typeValue).getLong(1);
-            }
-            dir.txn.set(typeKey, Tuple.from(type, index).pack());
-
-            Tuple dataTuple = makeFieldDataTuple(docTuple, info.number, index);
-            // Clear any old data
-            dir.txn.clear(dataTuple.range());
-            Util.writeLargeValue(dir.txn, dataTuple, LARGE_VALUE_BLOCK_SIZE, Tuple.from(value).pack());
+            dir.run(txn -> {
+                byte[] typeValue = Util.get(txn.get(typeKey));
+                long index = 0;
+                if(typeValue != null) {
+                    index = Tuple.fromBytes(typeValue).getLong(1);
+                }
+                txn.set(typeKey, Tuple.from(type, index).pack());
+    
+                Tuple dataTuple = makeFieldDataTuple(docTuple, info.number, index);
+                // Clear any old data
+                txn.clear(dataTuple.range());
+                Util.writeLargeValue(txn, dataTuple, LARGE_VALUE_BLOCK_SIZE, Tuple.from(value).pack());
+                return null;
+            });
         }
 
         @Override

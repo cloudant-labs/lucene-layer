@@ -25,6 +25,7 @@ package com.foundationdb.lucene;
 
 import com.apple.foundationdb.KeyValue;
 import com.apple.foundationdb.MutationType;
+import com.apple.foundationdb.Transaction;
 import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
@@ -191,8 +192,10 @@ public final class FDBPostingsFormat extends PostingsFormat
 
             @Override
             public SeekStatus seekCeil(BytesRef text) {
-                List<KeyValue> range = Util.get(dir.txn.getRange(fieldTuple.add(Util.copyRange(text)).pack(), fieldTuple.range().end, 1)
-                                          .asList());
+                List<KeyValue> range = dir.run(txn -> {
+                    return Util.get(txn.getRange(fieldTuple.add(Util.copyRange(text)).pack(), fieldTuple.range().end, 1)
+                            .asList());
+                });
                 if(range.isEmpty()) {
                     return SeekStatus.END;
                 }
@@ -278,6 +281,7 @@ public final class FDBPostingsFormat extends PostingsFormat
             private final boolean readPositions;
             private final Bits liveDocs;
             private final int docFreq;
+            private Transaction txn;
             private Iterator<KeyValue> termIterator;
             private int docID;
             private int termDocFreq;
@@ -293,7 +297,8 @@ public final class FDBPostingsFormat extends PostingsFormat
                 this.liveDocs = liveDocs;
                 this.docFreq = docFreq;
 
-                this.termIterator =dir.txn.getRange(termTuple.add(0).pack(), termTuple.range().end).iterator();
+                this.txn = dir.createTransaction();
+                this.termIterator = txn.getRange(termTuple.add(0).pack(), termTuple.range().end).iterator();
                 this.docID = -1;
                 if(!readOffsets) {
                     startOffset = endOffset = -1;
@@ -462,6 +467,7 @@ public final class FDBPostingsFormat extends PostingsFormat
             private final IndexOptions indexOptions;
             private final boolean writePositions;
             private final boolean writeOffsets;
+            private Transaction txn;
             private Tuple termTuple = null;
             private Tuple docTuple = null;
             private boolean wroteNumDocs;
@@ -482,11 +488,12 @@ public final class FDBPostingsFormat extends PostingsFormat
 
             @Override
             public void startDoc(int docID, int termDocFreq) {
+                this.txn = dir.createTransaction();
                 if(!wroteNumDocs) {
-                    dir.txn.set(termTuple.add(NUM_DOCS).pack(), LITTLE_ENDIAN_LONG_ONE);
+                    txn.set(termTuple.add(NUM_DOCS).pack(), LITTLE_ENDIAN_LONG_ONE);
                     wroteNumDocs = true;
                 } else {
-                    dir.txn.mutate(MutationType.ADD, termTuple.add(NUM_DOCS).pack(), LITTLE_ENDIAN_LONG_ONE);
+                    txn.mutate(MutationType.ADD, termTuple.add(NUM_DOCS).pack(), LITTLE_ENDIAN_LONG_ONE);
                 }
 
                 docTuple = termTuple.add(docID);
@@ -495,7 +502,7 @@ public final class FDBPostingsFormat extends PostingsFormat
                 if(indexOptions != IndexOptions.DOCS_ONLY) {
                     valueTuple = valueTuple.add(termDocFreq);
                 }
-                dir.txn.set(docTuple.pack(), valueTuple.pack());
+                txn.set(docTuple.pack(), valueTuple.pack());
             }
 
             @Override
@@ -503,12 +510,15 @@ public final class FDBPostingsFormat extends PostingsFormat
                 // If there is anything to write, just write it all (positions and offsets are tiny)
                 if(writePositions || writeOffsets || (payload != null && payload.length > 0)) {
                     Tuple valueTuple = Tuple.from(startOffset, endOffset, Util.copyRange(payload));
-                    dir.txn.set(docTuple.add(position).pack(), valueTuple.pack());
+                    txn.set(docTuple.add(position).pack(), valueTuple.pack());
                 }
             }
 
             @Override
             public void finishDoc() {
+                this.txn.commit();
+                this.txn.close();
+                this.txn = null;
             }
         }
     }

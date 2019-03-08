@@ -109,6 +109,6 @@ public class TestBase
     }
 
     protected FDBDirectory createDirectory(String subDirName) {
-        return new FDBDirectory(Tuple.from(Util.DEFAULT_TEST_ROOT_PREFIX, subDirName), testBaseTxn);
+        return new FDBDirectory(Tuple.from(Util.DEFAULT_TEST_ROOT_PREFIX, subDirName), testBaseDB);
     }
 }

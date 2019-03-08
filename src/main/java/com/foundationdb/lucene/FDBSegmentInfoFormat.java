@@ -81,65 +81,67 @@ public class FDBSegmentInfoFormat extends SegmentInfoFormat
             final FDBDirectory dir = Util.unwrapDirectory(dirIn);
             final Tuple segmentTuple = dir.subspace.add(segmentName).add(SEGMENT_INFO_EXT);
 
-            String version = null;
-            Integer docCount = null;
-            Boolean isCompoundFile = null;
-            Map<String, String> diagnostics = new HashMap<String, String>();
-            Map<String, String> attributes = new HashMap<String, String>();
-            Set<String> files = new HashSet<String>();
+            return dir.run(txn -> {
+                String version = null;
+                Integer docCount = null;
+                Boolean isCompoundFile = null;
+                Map<String, String> diagnostics = new HashMap<String, String>();
+                Map<String, String> attributes = new HashMap<String, String>();
+                Set<String> files = new HashSet<String>();
 
-            for(KeyValue kv : dir.txn.getRange(segmentTuple.range())) {
-                Tuple keyTuple = Tuple.fromBytes(kv.getKey());
-                Tuple valueTuple = Tuple.fromBytes(kv.getValue());
-                String key = keyTuple.getString(segmentTuple.size());
-                if(keyTuple.size() == (segmentTuple.size() + 1)) {
-                    if(VERSION.equals(key)) {
-                        version = valueTuple.getString(0);
-                    } else if(DOC_COUNT.equals(key)) {
-                        docCount = (int)valueTuple.getLong(0);
-                    } else if(IS_COMPOUND_FILE.equals(key)) {
-                        isCompoundFile = getBool(valueTuple, 0);
+                for(KeyValue kv : txn.getRange(segmentTuple.range())) {
+                    Tuple keyTuple = Tuple.fromBytes(kv.getKey());
+                    Tuple valueTuple = Tuple.fromBytes(kv.getValue());
+                    String key = keyTuple.getString(segmentTuple.size());
+                    if(keyTuple.size() == (segmentTuple.size() + 1)) {
+                        if(VERSION.equals(key)) {
+                            version = valueTuple.getString(0);
+                        } else if(DOC_COUNT.equals(key)) {
+                            docCount = (int)valueTuple.getLong(0);
+                        } else if(IS_COMPOUND_FILE.equals(key)) {
+                            isCompoundFile = getBool(valueTuple, 0);
+                        } else {
+                            notFound(key);
+                        }
+                    } else if(keyTuple.size() == (segmentTuple.size() + 2)) {
+                        if(DIAG.equals(key)) {
+                            diagnostics.put(keyTuple.getString(segmentTuple.size() + 1), valueTuple.getString(0));
+                        } else if(ATTR.equals(key)) {
+                            attributes.put(keyTuple.getString(segmentTuple.size() + 1), valueTuple.getString(0));
+                        } else if(FILE.equals(key)) {
+                            files.add(keyTuple.getString(segmentTuple.size() + 1));
+                        } else {
+                            notFound(key);
+                        }
                     } else {
                         notFound(key);
                     }
-                } else if(keyTuple.size() == (segmentTuple.size() + 2)) {
-                    if(DIAG.equals(key)) {
-                        diagnostics.put(keyTuple.getString(segmentTuple.size() + 1), valueTuple.getString(0));
-                    } else if(ATTR.equals(key)) {
-                        attributes.put(keyTuple.getString(segmentTuple.size() + 1), valueTuple.getString(0));
-                    } else if(FILE.equals(key)) {
-                        files.add(keyTuple.getString(segmentTuple.size() + 1));
-                    } else {
-                        notFound(key);
-                    }
-                } else {
-                    notFound(key);
                 }
-            }
 
-            if(version == null) {
-                throw required(segmentName, VERSION);
-            }
-            if(docCount == null) {
-                throw required(segmentName, DOC_COUNT);
-            }
-            if(isCompoundFile == null) {
-                throw required(segmentName, IS_COMPOUND_FILE);
-            }
+                if(version == null) {
+                    throw required(segmentName, VERSION);
+                }
+                if(docCount == null) {
+                    throw required(segmentName, DOC_COUNT);
+                }
+                if(isCompoundFile == null) {
+                    throw required(segmentName, IS_COMPOUND_FILE);
+                }
 
-            SegmentInfo info = new SegmentInfo(
-                    dirIn,
-                    version,
-                    segmentName,
-                    docCount,
-                    isCompoundFile,
-                    null,
-                    diagnostics,
-                    Collections.unmodifiableMap(attributes)
-            );
-            info.setFiles(files);
+                SegmentInfo info = new SegmentInfo(
+                        dirIn,
+                        version,
+                        segmentName,
+                        docCount,
+                        isCompoundFile,
+                        null,
+                        diagnostics,
+                        Collections.unmodifiableMap(attributes)
+                );
+                info.setFiles(files);
 
-            return info;
+                return info;
+            });
         }
 
         private static void notFound(String key) {
@@ -162,20 +164,23 @@ public class FDBSegmentInfoFormat extends SegmentInfoFormat
             final FDBDirectory dir = Util.unwrapDirectory(dirIn);
             final Tuple segmentTuple = dir.subspace.add(si.name).add(SEGMENT_INFO_EXT);
 
-            set(dir.txn, segmentTuple, DOC_COUNT, si.getDocCount());
-            set(dir.txn, segmentTuple, IS_COMPOUND_FILE, si.getUseCompoundFile());
-            set(dir.txn, segmentTuple, VERSION, si.getVersion());
+            dir.run(txn -> {
+                set(txn, segmentTuple, DOC_COUNT, si.getDocCount());
+                set(txn, segmentTuple, IS_COMPOUND_FILE, si.getUseCompoundFile());
+                set(txn, segmentTuple, VERSION, si.getVersion());
 
-            setMap(dir.txn, segmentTuple.add(DIAG), si.getDiagnostics());
-            setMap(dir.txn, segmentTuple.add(ATTR), si.attributes());
+                setMap(txn, segmentTuple.add(DIAG), si.getDiagnostics());
+                setMap(txn, segmentTuple.add(ATTR), si.attributes());
 
-            Set<String> files = si.files();
-            if(files != null && !files.isEmpty()) {
-                Tuple fileTuple = segmentTuple.add(FILE);
-                for(String fileName : files) {
-                    set(dir.txn, fileTuple, fileName);
+                Set<String> files = si.files();
+                if(files != null && !files.isEmpty()) {
+                    Tuple fileTuple = segmentTuple.add(FILE);
+                    for(String fileName : files) {
+                        set(txn, fileTuple, fileName);
+                    }
                 }
-            }
+                return null;
+            });
         }
     }
 }

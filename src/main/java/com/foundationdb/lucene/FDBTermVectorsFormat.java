@@ -24,6 +24,7 @@
 package com.foundationdb.lucene;
 
 import com.apple.foundationdb.KeyValue;
+import com.apple.foundationdb.Transaction;
 import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.codecs.TermVectorsFormat;
 import org.apache.lucene.codecs.TermVectorsReader;
@@ -94,21 +95,23 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
         @Override
         public Fields get(int doc) {
             List<TVField> fields = new ArrayList<TVField>();
-            for(KeyValue kv : dir.txn.getRange(segmentTuple.add(doc).add(FIELD).range())) {
-                Tuple keyTuple = Tuple.fromBytes(kv.getKey());
-                Tuple valueTuple = Tuple.fromBytes(kv.getValue());
-                fields.add(
-                        new TVField(
-                                keyTuple.getString(keyTuple.size() - 1),
-                                doc,
-                                (int)valueTuple.getLong(1),
-                                getBool(valueTuple, 2),
-                                getBool(valueTuple, 3),
-                                getBool(valueTuple, 4)
-                        )
-                );
-            }
-            return new TVFields(fields.toArray(new TVField[fields.size()]));
+            return dir.run(txn -> {
+                for(KeyValue kv : txn.getRange(segmentTuple.add(doc).add(FIELD).range())) {
+                    Tuple keyTuple = Tuple.fromBytes(kv.getKey());
+                    Tuple valueTuple = Tuple.fromBytes(kv.getValue());
+                    fields.add(
+                            new TVField(
+                                    keyTuple.getString(keyTuple.size() - 1),
+                                    doc,
+                                    (int)valueTuple.getLong(1),
+                                    getBool(valueTuple, 2),
+                                    getBool(valueTuple, 3),
+                                    getBool(valueTuple, 4)
+                            )
+                    );
+                }
+                return new TVFields(fields.toArray(new TVField[fields.size()]));
+            });
         }
 
         @Override
@@ -133,25 +136,28 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
 
         private TVPostings loadPostings(TVField field, int freq, Tuple termTuple) {
             TVPostings postings = new TVPostings(freq, field.hasPositions, field.hasOffsets, field.hasPayloads);
-            int index = 0;
-            for(KeyValue kv : dir.txn.getRange(termTuple.range())) {
-                Tuple keyTuple = Tuple.fromBytes(kv.getKey());
-                assert keyTuple.size() == termTuple.size() + 1 : "Unexpected key: " + Util.tupleString(keyTuple);
-
-                Tuple valueTuple = Tuple.fromBytes(kv.getValue());
-                if(field.hasPositions) {
-                    postings.positions[index] = (int)keyTuple.getLong(keyTuple.size() - 1);
+            
+            return dir.run(txn -> {
+                int index = 0;
+                for(KeyValue kv : txn.getRange(termTuple.range())) {
+                    Tuple keyTuple = Tuple.fromBytes(kv.getKey());
+                    assert keyTuple.size() == termTuple.size() + 1 : "Unexpected key: " + Util.tupleString(keyTuple);
+    
+                    Tuple valueTuple = Tuple.fromBytes(kv.getValue());
+                    if(field.hasPositions) {
+                        postings.positions[index] = (int)keyTuple.getLong(keyTuple.size() - 1);
+                    }
+                    if(field.hasOffsets) {
+                        postings.startOffsets[index] = (int)valueTuple.getLong(0);
+                        postings.endOffsets[index] = (int)valueTuple.getLong(1);
+                    }
+                    if(field.hasPayloads) {
+                        postings.payloads[index] = new BytesRef(valueTuple.getBytes(2).clone());
+                    }
+                    ++index;
                 }
-                if(field.hasOffsets) {
-                    postings.startOffsets[index] = (int)valueTuple.getLong(0);
-                    postings.endOffsets[index] = (int)valueTuple.getLong(1);
-                }
-                if(field.hasPayloads) {
-                    postings.payloads[index] = new BytesRef(valueTuple.getBytes(2).clone());
-                }
-                ++index;
-            }
-            return postings;
+                return postings;
+            });
         }
 
         private class TVFields extends Fields
@@ -226,6 +232,7 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
         {
             private final TVField field;
             private final Tuple termsTuple;
+            private Transaction txn;
             private Iterator<KeyValue> it;
             private BytesRef curTerm;
             private int curFreq;
@@ -237,8 +244,9 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
 
             private void advance() {
                 if(it == null) {
+                    this.txn = dir.createTransaction();
                     // next() immediately after constructed. Position to first term for this field.
-                    it = dir.txn.getRange(termsTuple.range()).iterator();
+                    it = txn.getRange(termsTuple.range()).iterator();
                 }
                 curTerm = null;
                 curFreq = -1;
@@ -257,7 +265,7 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
             public SeekStatus seekCeil(BytesRef text) {
                 byte[] begin = termsTuple.add(Util.copyRange(text)).pack();
                 byte[] end = termsTuple.range().end;
-                it = dir.txn.getRange(begin, end).iterator();
+                it = txn.getRange(begin, end).iterator();
                 advance();
                 if(curTerm == null) {
                     return SeekStatus.END;
@@ -335,6 +343,7 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
     {
         private final FDBDirectory dir;
         private final Tuple segmentTuple;
+        private Transaction txn;
         private int numDocsWritten;
         private int numTermsWritten;
 
@@ -349,6 +358,7 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
         public FDBTermVectorsWriter(Directory directory, String segmentName) {
             this.dir = Util.unwrapDirectory(directory);
             this.segmentTuple = dir.subspace.add(segmentName).add(TERM_VECTORS_EXT);
+            this.txn = dir.createTransaction();
         }
 
         @Override
@@ -360,7 +370,7 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
         @Override
         public void startField(FieldInfo info, int numTerms, boolean hasPositions, boolean hasOffsets, boolean hasPayloads) {
             curField = info;
-            dir.txn.set(
+            txn.set(
                     docTuple.add(FIELD).add(curField.name).pack(),
                     Tuple.from(info.number, numTerms, hasPositions ? 1 : 0, hasOffsets ? 1 : 0, hasPayloads ? 1 : 0).pack()
             );
@@ -373,7 +383,7 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
         @Override
         public void startTerm(BytesRef term, int freq) {
             termTuple = docTuple.add(TERM).add(curField.name).add(Util.copyRange(term));
-            dir.txn.set(termTuple.pack(), Tuple.from(freq).pack());
+            txn.set(termTuple.pack(), Tuple.from(freq).pack());
             ++numTermsWritten;
         }
 
@@ -384,16 +394,17 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
                     hasOffsets ? endOffset : null,
                     hasPayloads ? Util.copyRange(payload) : null
             );
-            set(dir.txn, termTuple, position, valueTuple);
+            set(txn, termTuple, position, valueTuple);
         }
 
         @Override
         public void abort() {
-            // None
+            txn.cancel();
         }
 
         @Override
         public void finish(FieldInfos fis, int numDocs) {
+            txn.commit();
             if(numDocsWritten != numDocs) {
                 throw new IllegalStateException("Expected " + numDocs + " docs to be written but saw " + numDocsWritten);
             }
@@ -401,7 +412,7 @@ public class FDBTermVectorsFormat extends TermVectorsFormat
 
         @Override
         public void close() {
-            // None
+            txn.close();
         }
 
         @Override

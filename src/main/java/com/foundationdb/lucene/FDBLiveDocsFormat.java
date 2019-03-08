@@ -63,16 +63,18 @@ public class FDBLiveDocsFormat extends LiveDocsFormat
         FDBDirectory dir = Util.unwrapDirectory(directory);
         Tuple livTuple = makeLivTuple(dir, info, info.getDelGen());
 
-        byte[] sizeBytes = Util.get(dir.txn.get(livTuple.pack()));
-        assert sizeBytes != null : "No such livTuple";
+        return dir.run(txn -> {
+	        byte[] sizeBytes = Util.get(txn.get(livTuple.pack()));
+	        assert sizeBytes != null : "No such livTuple";
 
-        int totalSize = (int)Tuple.fromBytes(sizeBytes).getLong(0);
-        BitSet bits = new BitSet(totalSize);
-        for(KeyValue kv : dir.txn.getRange(livTuple.range())) {
-            int i = (int)Tuple.fromBytes(kv.getKey()).getLong(livTuple.size());
-            bits.set(i);
-        }
-        return new FDBBits(bits, totalSize);
+	        int totalSize = (int)Tuple.fromBytes(sizeBytes).getLong(0);
+	        BitSet bits = new BitSet(totalSize);
+	        for(KeyValue kv : txn.getRange(livTuple.range())) {
+	            int i = (int)Tuple.fromBytes(kv.getKey()).getLong(livTuple.size());
+	            bits.set(i);
+	        }
+	        return new FDBBits(bits, totalSize);
+        });
     }
 
     @Override
@@ -81,11 +83,14 @@ public class FDBLiveDocsFormat extends LiveDocsFormat
         Tuple livTuple = makeLivTuple(dir, info, info.getNextDelGen());
 
         FDBBits bits = (FDBBits)liveDocs;
-        dir.txn.set(livTuple.pack(), Tuple.from(bits.size).pack());
+        dir.run(txn -> {
+	        txn.set(livTuple.pack(), Tuple.from(bits.size).pack());
 
-        for(int i = bits.bitSet.nextSetBit(0); i >= 0; i = bits.bitSet.nextSetBit(i + 1)) {
-            set(dir.txn, livTuple, i);
-        }
+	        for(int i = bits.bitSet.nextSetBit(0); i >= 0; i = bits.bitSet.nextSetBit(i + 1)) {
+	            set(txn, livTuple, i);
+	        }
+	        return null;
+        });
     }
 
     @Override

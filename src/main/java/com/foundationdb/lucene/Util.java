@@ -282,6 +282,11 @@ public class Util
         initFDB();
         return test_DB.createTransaction();
     }
+    
+    static Database test_DB() {
+        initFDB();
+        return test_DB;
+    }
 
     static void test_SetDirectory(FDBTestDirectory testDir) {
         test_CheckInitialized();

@@ -128,7 +128,9 @@ public class FDBDocValuesFormat extends DocValuesFormat
 
             @Override
             public long get(int docID) {
-                byte[] bytes = Util.get(dir.txn.get(numericTuple.add(docID).pack()));
+            	byte[] bytes = dir.run(txn -> { 
+                	return Util.get(txn.get(numericTuple.add(docID).pack()));
+            	});
                 assert bytes != null : "No numeric for docID: " + docID;
                 return Tuple.fromBytes(bytes).getLong(0);
             }
@@ -144,7 +146,9 @@ public class FDBDocValuesFormat extends DocValuesFormat
 
             @Override
             public void get(int docID, BytesRef result) {
-                byte[] bytes = Util.get(dir.txn.get(binaryTuple.add(docID).pack()));
+            	byte[] bytes = dir.run(txn -> { 
+            		return Util.get(txn.get(binaryTuple.add(docID).pack()));
+            	});
                 assert bytes != null : "No bytes for docID: " + docID;
                 result.bytes = Tuple.fromBytes(bytes).getBytes(0).clone();
                 result.offset = 0;
@@ -162,14 +166,18 @@ public class FDBDocValuesFormat extends DocValuesFormat
 
             @Override
             public int getOrd(int docID) {
-                byte[] bytes = Util.get(dir.txn.get(sortedTuple.add(ORD).add(docID).pack()));
+            	byte[] bytes = dir.run(txn -> { 
+                	return Util.get(txn.get(sortedTuple.add(ORD).add(docID).pack()));
+            	});
                 assert bytes != null : "No ord for docID: " + docID;
                 return (int)Tuple.fromBytes(bytes).getLong(0);
             }
 
             @Override
             public void lookupOrd(int ord, BytesRef result) {
-                byte[] bytes = Util.get(dir.txn.get(sortedTuple.add(BYTES).add(ord).pack()));
+            	byte[] bytes = dir.run(txn -> { 
+                	return Util.get(txn.get(sortedTuple.add(BYTES).add(ord).pack()));
+            	});
                 assert bytes != null : "No bytes for ord: " + ord;
                 result.bytes = Tuple.fromBytes(bytes).getBytes(0).clone();
                 result.offset = 0;
@@ -180,7 +188,9 @@ public class FDBDocValuesFormat extends DocValuesFormat
             public int getValueCount() {
                 int valueCount = 0;
                 Tuple bytesTuple = sortedTuple.add(BYTES);
-                List<KeyValue> lastValue = Util.get(dir.txn.getRange(bytesTuple.range(), 1, true).asList());
+                List<KeyValue> lastValue = dir.run(txn -> { 
+                	return Util.get(txn.getRange(bytesTuple.range(), 1, true).asList());
+                });
                 if(!lastValue.isEmpty()) {
                     if(!lastValue.isEmpty()) {
                         KeyValue kv = lastValue.get(0);
@@ -212,13 +222,17 @@ public class FDBDocValuesFormat extends DocValuesFormat
             }
 
             @Override
-            public void setDocument(int docID) {
-                ordIt = dir.txn.getRange(sortedSetTuple.add(DOC_TO_ORD).add(docID).range()).iterator();
+            public void setDocument(int docID) {            	
+                ordIt = dir.run(txn -> {
+                	return txn.getRange(sortedSetTuple.add(DOC_TO_ORD).add(docID).range()).iterator();
+                });
             }
 
             @Override
             public void lookupOrd(long ord, BytesRef result) {
-                byte[] bytes = Util.get(dir.txn.get(sortedSetTuple.add(BYTES).add(ord).pack()));
+                byte[] bytes = dir.run(txn -> {
+                	return Util.get(txn.get(sortedSetTuple.add(BYTES).add(ord).pack()));
+                });
                 assert bytes != null : "No bytes for ord: " + ord;
                 result.bytes = Tuple.fromBytes(bytes).getBytes(0).clone();
                 result.offset = 0;
@@ -228,7 +242,9 @@ public class FDBDocValuesFormat extends DocValuesFormat
             @Override
             public long getValueCount() {
                 Tuple bytesTuple = sortedSetTuple.add(BYTES);
-                List<KeyValue> lastValue = Util.get(dir.txn.getRange(bytesTuple.range(), 1, true).asList());
+                List<KeyValue> lastValue = dir.run(txn -> {
+                	return Util.get(txn.getRange(bytesTuple.range(), 1, true).asList());
+                });
                 int valueCount = 0;
                 if(!lastValue.isEmpty()) {
                     KeyValue kv = lastValue.get(0);
@@ -272,12 +288,15 @@ public class FDBDocValuesFormat extends DocValuesFormat
         public void addNumericField(FieldInfo field, Iterable<Number> values) {
             assert (field.getDocValuesType() == DocValuesType.NUMERIC || field.getNormType() == DocValuesType.NUMERIC);
             Tuple fieldTuple = segmentTuple.add(field.name).add(DocValuesType.NUMERIC.ordinal());
-            int docNum = 0;
-            for(Number n : values) {
-                assert n instanceof Long : n.getClass();
-                set(dir.txn, fieldTuple, docNum, n.longValue());
-                ++docNum;
-            }
+            int docNum = dir.run(txn -> {
+            	int dn = 0;            
+	            for(Number n : values) {
+	                assert n instanceof Long : n.getClass();
+	                set(txn, fieldTuple, dn, n.longValue());
+	                ++dn;
+	            }
+	            return dn;
+            });
             checkWritten(docNum);
         }
 
@@ -285,11 +304,14 @@ public class FDBDocValuesFormat extends DocValuesFormat
         public void addBinaryField(FieldInfo field, Iterable<BytesRef> values) {
             assert field.getDocValuesType() == DocValuesType.BINARY;
             Tuple fieldTuple = segmentTuple.add(field.name).add(DocValuesType.BINARY.ordinal());
-            int docNum = 0;
-            for(BytesRef value : values) {
-                set(dir.txn, fieldTuple, docNum, value);
-                ++docNum;
-            }
+            int docNum = dir.run(txn -> {
+            	int dn = 0;
+	            for(BytesRef value : values) {
+	                set(txn, fieldTuple, dn, value);
+	                ++dn;
+	            }
+	            return dn;
+            });
             checkWritten(docNum);
         }
 
@@ -301,18 +323,21 @@ public class FDBDocValuesFormat extends DocValuesFormat
             Tuple fieldTuple = segmentTuple.add(field.name).add(field.getDocValuesType().ordinal());
 
             Tuple bytesTuple = fieldTuple.add(BYTES);
-            int ordNum = 0;
-            for(BytesRef value : values) {
-                set(dir.txn, bytesTuple, ordNum, value);
-                ++ordNum;
-            }
-
-            Tuple ordTuple = fieldTuple.add(ORD);
-            int docNum = 0;
-            for(Number ord : docToOrd) {
-                set(dir.txn, ordTuple, docNum, ord.longValue());
-                ++docNum;
-            }
+            int docNum = dir.run(txn -> {
+	            int ordNum = 0;
+	            for(BytesRef value : values) {
+	                set(txn, bytesTuple, ordNum, value);
+	                ++ordNum;
+	            }
+	
+	            Tuple ordTuple = fieldTuple.add(ORD);
+	            int dn = 0;
+	            for(Number ord : docToOrd) {
+	                set(txn, ordTuple, dn, ord.longValue());
+	                ++dn;
+	            }
+	            return dn;
+            });
 
             checkWritten(docNum);
         }
@@ -325,24 +350,27 @@ public class FDBDocValuesFormat extends DocValuesFormat
             assert field.getDocValuesType() == DocValuesType.SORTED_SET;
 
             Tuple fieldTuple = segmentTuple.add(field.name).add(field.getDocValuesType().ordinal());
-            Tuple bytesTuple = fieldTuple.add(BYTES);
-            int ordNum = 0;
-            for(BytesRef value : values) {
-                set(dir.txn, bytesTuple, ordNum, value);
-                ++ordNum;
-            }
-
-            Tuple docOrdTuple = fieldTuple.add(DOC_TO_ORD);
-            int docNum = 0;
-            Iterator<Number> ordIt = ords.iterator();
-            for(Number ordCount : docToOrdCount) {
-                Tuple docOrdDocTuple = docOrdTuple.add(docNum);
-                for(int i = 0; i < ordCount.longValue(); ++i) {
-                    long ordinal = ordIt.next().longValue();
-                    set(dir.txn, docOrdDocTuple, ordinal);
-                }
-                ++docNum;
-            }
+            Tuple bytesTuple = fieldTuple.add(BYTES);           
+            int docNum = dir.run(txn -> {
+            	int ordNum = 0;
+	            for(BytesRef value : values) {
+	                set(txn, bytesTuple, ordNum, value);
+	                ++ordNum;
+	            }
+            
+	            Tuple docOrdTuple = fieldTuple.add(DOC_TO_ORD);
+	            int dn = 0;
+	            Iterator<Number> ordIt = ords.iterator();
+	            for(Number ordCount : docToOrdCount) {
+	                Tuple docOrdDocTuple = docOrdTuple.add(dn);
+	                for(int i = 0; i < ordCount.longValue(); ++i) {
+	                    long ordinal = ordIt.next().longValue();
+	                    set(txn, docOrdDocTuple, ordinal);
+	                }
+	                ++dn;
+	            }
+	            return dn;
+            });
 
             checkWritten(docNum);
         }

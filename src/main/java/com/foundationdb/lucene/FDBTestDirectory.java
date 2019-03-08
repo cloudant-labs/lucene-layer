@@ -23,6 +23,7 @@
 
 package com.foundationdb.lucene;
 
+import com.apple.foundationdb.Database;
 import com.apple.foundationdb.Transaction;
 import com.apple.foundationdb.tuple.Tuple;
 import org.apache.lucene.store.FSDirectory;
@@ -46,20 +47,20 @@ public class FDBTestDirectory extends FSDirectory
 
 
     public FDBTestDirectory(File path) throws IOException {
-        this(path, Util.test_CreateTransaction());
+        this(path, Util.test_DB());
         // Note: Not ideal, as 'this' escapes, but fully constructed at this point
         Util.test_SetDirectory(this);
     }
 
-    private FDBTestDirectory(File path, Transaction txn) throws IOException {
-        this(path, txn, NoLockFactory.getNoLockFactory());
+    private FDBTestDirectory(File path, Database db) throws IOException {
+        this(path, db, NoLockFactory.getNoLockFactory());
     }
 
-    private FDBTestDirectory(File path, Transaction txn, LockFactory lockFactory) throws IOException {
+    private FDBTestDirectory(File path, Database db, LockFactory lockFactory) throws IOException {
         super(path, lockFactory);
-        assert txn != null;
+        assert db != null;
         Tuple subspace = Tuple.from(Util.DEFAULT_TEST_ROOT_PREFIX, path.getAbsolutePath());
-        this.fdbDir = new FDBDirectory(subspace, txn, lockFactory);
+        this.fdbDir = new FDBDirectory(subspace, db, lockFactory);
     }
 
     public FDBDirectory getFDBDirectory() {
@@ -70,7 +71,7 @@ public class FDBTestDirectory extends FSDirectory
         if(subDir == null || subDir.closed) {
             File path = new File(getDirectory(), "SubDir_" + subDirCount++);
             try {
-                subDir = new FDBTestDirectory(path, Util.test_CreateTransaction());
+                subDir = new FDBTestDirectory(path, Util.test_DB());
             } catch(IOException e) {
                 throw new IllegalStateException("Constructor threw", e);
             }
