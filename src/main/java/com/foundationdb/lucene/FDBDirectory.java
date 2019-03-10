@@ -195,9 +195,9 @@ public class FDBDirectory extends Directory
 	        }
 	        txn.clear(dirSubspace.add(name).pack());
 	        txn.clear(dataSubspace.add(dataID).range());
-	        return null;
+	        return 0L;
     	});
-        if(result == -1) {
+        if(result == -1L) {
             throw new NoSuchFileException(name);
         }
     }
