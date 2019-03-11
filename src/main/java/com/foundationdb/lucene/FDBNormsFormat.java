@@ -26,6 +26,7 @@ package com.foundationdb.lucene;
 import org.apache.lucene.codecs.DocValuesConsumer;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.codecs.NormsFormat;
+import org.apache.lucene.codecs.lucene42.Lucene42Codec;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 

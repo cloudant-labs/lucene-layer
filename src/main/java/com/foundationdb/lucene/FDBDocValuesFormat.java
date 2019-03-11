@@ -52,7 +52,6 @@ public class FDBDocValuesFormat extends DocValuesFormat
     private static final String ORD = "ord";
     private static final String DOC_TO_ORD = "doc_ord";
 
-
     public FDBDocValuesFormat() {
         super(FDBDocValuesFormat.class.getSimpleName());
     }
@@ -81,11 +80,13 @@ public class FDBDocValuesFormat extends DocValuesFormat
     {
         private final FDBDirectory dir;
         private final Tuple segmentTuple;
+        private final int maxDoc;
 
 
         public FDBDocValuesProducer(SegmentReadState state, String ext) {
             this.dir = Util.unwrapDirectory(state.directory);
             this.segmentTuple = dir.subspace.add(state.segmentInfo.name).add(state.segmentSuffix).add(ext);
+            this.maxDoc = state.segmentInfo.getDocCount();
         }
 
         @Override
@@ -255,10 +256,14 @@ public class FDBDocValuesFormat extends DocValuesFormat
             }
         }
 
-		@Override
-		public Bits getDocsWithField(FieldInfo field) throws IOException {
-			return null; // TODO
-		}
+        @Override
+        public Bits getDocsWithField(FieldInfo field) throws IOException {
+            if (field.getDocValuesType() == FieldInfo.DocValuesType.SORTED_SET) {
+                return new SortedSetDocsWithField(getSortedSet(field), maxDoc);
+            } else {
+                return new Bits.MatchAllBits(maxDoc);
+            }
+        }
 
 		@Override
 		public long ramBytesUsed() {
