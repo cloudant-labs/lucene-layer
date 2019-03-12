@@ -44,6 +44,14 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 
+
+import org.apache.lucene.index.MergeState;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.FixedBitSet;
+
+
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -437,9 +445,11 @@ public final class FDBPostingsFormat extends PostingsFormat
         {
             private final FDBPostingsConsumer postingsConsumer;
             private final Tuple fieldTuple;
+            private Transaction txn;
 
             public FDBTermsConsumer(FieldInfo field) {
-                this.postingsConsumer = new FDBPostingsConsumer(field);
+                this.txn = dir.createTransaction();
+                this.postingsConsumer = new FDBPostingsConsumer(field, txn);
                 this.fieldTuple = segmentTuple.add(field.number);
             }
 
@@ -454,6 +464,9 @@ public final class FDBPostingsFormat extends PostingsFormat
 
             @Override
             public void finish(long sumTotalTermFreq, long sumDocFreq, int docCount) {
+                this.txn.commit();
+                this.txn.close();
+                this.txn = null;
             }
 
             @Override
@@ -473,6 +486,11 @@ public final class FDBPostingsFormat extends PostingsFormat
             private boolean wroteNumDocs;
 
 
+            public FDBPostingsConsumer(FieldInfo field, Transaction txn) {
+                this(field);
+                this.txn = txn;
+            }
+
             public FDBPostingsConsumer(FieldInfo field) {
                 this.indexOptions = field.getIndexOptions();
                 writePositions = indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
@@ -488,7 +506,6 @@ public final class FDBPostingsFormat extends PostingsFormat
 
             @Override
             public void startDoc(int docID, int termDocFreq) {
-                this.txn = dir.createTransaction();
                 if(!wroteNumDocs) {
                     txn.set(termTuple.add(NUM_DOCS).pack(), LITTLE_ENDIAN_LONG_ONE);
                     wroteNumDocs = true;
@@ -516,9 +533,6 @@ public final class FDBPostingsFormat extends PostingsFormat
 
             @Override
             public void finishDoc() {
-                this.txn.commit();
-                this.txn.close();
-                this.txn = null;
             }
         }
     }
