@@ -420,20 +420,24 @@ public final class FDBPostingsFormat extends PostingsFormat
     {
         private final FDBDirectory dir;
         private final Tuple segmentTuple;
+        private Transaction txn;
 
         public FDBFieldsConsumer(SegmentWriteState state) {
             this.dir = Util.unwrapDirectory(state.directory);
+            this.txn = this.dir.createTransaction();
             this.segmentTuple = dir.subspace.add(state.segmentInfo.name).add(POSTINGS_EXT);
         }
 
         @Override
         public FDBTermsConsumer addField(FieldInfo field) {
-            return new FDBTermsConsumer(field);
+            return new FDBTermsConsumer(field, this.txn);
         }
 
         @Override
         public void close() {
-            // None
+            this.txn.commit();
+            this.txn.close();
+            this.txn = null;
         }
 
 
@@ -447,11 +451,17 @@ public final class FDBPostingsFormat extends PostingsFormat
             private final Tuple fieldTuple;
             private Transaction txn;
 
-            public FDBTermsConsumer(FieldInfo field) {
-                this.txn = dir.createTransaction();
+
+            public FDBTermsConsumer(FieldInfo field, Transaction txn) {
                 this.postingsConsumer = new FDBPostingsConsumer(field, txn);
                 this.fieldTuple = segmentTuple.add(field.number);
             }
+
+            // public FDBTermsConsumer(FieldInfo field) {
+            //     this.postingsConsumer = new FDBPostingsConsumer(field, txn);
+            //     this.fieldTuple = segmentTuple.add(field.number);
+            // }
+
 
             @Override
             public FDBPostingsConsumer startTerm(BytesRef term) {
@@ -464,9 +474,6 @@ public final class FDBPostingsFormat extends PostingsFormat
 
             @Override
             public void finish(long sumTotalTermFreq, long sumDocFreq, int docCount) {
-                this.txn.commit();
-                this.txn.close();
-                this.txn = null;
             }
 
             @Override
